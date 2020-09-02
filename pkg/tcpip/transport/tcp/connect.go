@@ -967,7 +967,7 @@ func (e *endpoint) resetConnectionLocked(err *tcpip.Error) {
 	// Only send a reset if the connection is being aborted for a reason
 	// other than receiving a reset.
 	e.setEndpointState(StateError)
-	e.HardError = err
+	e.hardError = err
 	if err != tcpip.ErrConnectionReset && err != tcpip.ErrTimeout {
 		// The exact sequence number to be used for the RST is the same as the
 		// one used by Linux. We need to handle the case of window being shrunk
@@ -1106,7 +1106,7 @@ func (e *endpoint) handleReset(s *segment) (ok bool, err *tcpip.Error) {
 		//  delete the TCB, and return.
 		case StateCloseWait:
 			e.transitionToStateCloseLocked()
-			e.HardError = tcpip.ErrAborted
+			e.hardError = tcpip.ErrAborted
 			e.notifyProtocolGoroutine(notifyTickleWorker)
 			return false, nil
 		default:
@@ -1318,7 +1318,6 @@ func (e *endpoint) protocolMainLoop(handshake bool, wakerInitDone chan<- struct{
 
 	epilogue := func() {
 		// e.mu is expected to be hold upon entering this section.
-
 		if e.snd != nil {
 			e.snd.resendTimer.cleanup()
 		}
@@ -1355,7 +1354,7 @@ func (e *endpoint) protocolMainLoop(handshake bool, wakerInitDone chan<- struct{
 			e.lastErrorMu.Unlock()
 
 			e.setEndpointState(StateError)
-			e.HardError = err
+			e.hardError = err
 
 			e.workerCleanup = true
 			// Lock released below.
