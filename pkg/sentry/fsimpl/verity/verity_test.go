@@ -296,6 +296,57 @@ func TestReopenUnmodifiedFileSucceeds(t *testing.T) {
 	}
 }
 
+// TestOpenUnexpectedFileFails ensures that reopen an untouched verity file
+// fails with non-verity errors after enabling verity for it, since this is due
+// to incorrect parameter.
+func TestOpenUnexpectedFileFails(t *testing.T) {
+	vfsObj, root, ctx, err := newVerityRoot(t)
+	if err != nil {
+		t.Fatalf("newVerityRoot: %v", err)
+	}
+
+	filename := "verity-test-file"
+	fd, _, err := newFileFD(ctx, vfsObj, root, filename, 0644)
+	if err != nil {
+		t.Fatalf("newFileFD: %v", err)
+	}
+
+	// Enable verity on the file and confirms a normal read succeeds.
+	var args arch.SyscallArguments
+	args[1] = arch.SyscallArgument{Value: linux.FS_IOC_ENABLE_VERITY}
+	if _, err := fd.Ioctl(ctx, nil /* uio */, args); err != nil {
+		t.Fatalf("Ioctl: %v", err)
+	}
+
+	// Enable verity on the parent directory.
+	parentFD, err := vfsObj.OpenAt(ctx, auth.CredentialsFromContext(ctx), &vfs.PathOperation{
+		Root:  root,
+		Start: root,
+	}, &vfs.OpenOptions{
+		Flags: linux.O_RDONLY,
+	})
+	if err != nil {
+		t.Fatalf("OpenAt: %v", err)
+	}
+
+	if _, err := parentFD.Ioctl(ctx, nil /* uio */, args); err != nil {
+		t.Fatalf("Ioctl: %v", err)
+	}
+
+	// Ensure open an unexpected file in the parent directory fails with
+	// non-verity error.
+	if _, err = vfsObj.OpenAt(ctx, auth.CredentialsFromContext(ctx), &vfs.PathOperation{
+		Root:  root,
+		Start: root,
+		Path:  fspath.Parse(filename + "abc"),
+	}, &vfs.OpenOptions{
+		Flags: linux.O_RDONLY,
+		Mode:  linux.ModeRegular,
+	}); err != syserror.ENOENT {
+		t.Errorf("OpenAt unexpected error: %v", err)
+	}
+}
+
 // TestPReadModifiedFileFails ensures that read from a modified verity file
 // fails.
 func TestPReadModifiedFileFails(t *testing.T) {
@@ -612,6 +663,16 @@ func TestOpenDeletedFileFails(t *testing.T) {
 			remove:           false,
 			changeFile:       true,
 			changeMerkleFile: false,
+		},
+		{
+			remove:           true,
+			changeFile:       true,
+			changeMerkleFile: true,
+		},
+		{
+			remove:           false,
+			changeFile:       true,
+			changeMerkleFile: true,
 		},
 	}
 	for _, tc := range testCases {

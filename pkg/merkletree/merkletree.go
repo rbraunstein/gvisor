@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/gob"
 	"fmt"
 	"io"
 
@@ -150,11 +151,15 @@ type VerityDescriptor struct {
 	Mode     uint32
 	UID      uint32
 	GID      uint32
+	Children map[string]bool
 	RootHash []byte
 }
 
 func (d *VerityDescriptor) String() string {
-	return fmt.Sprintf("Name: %s, Mode: %d, UID: %d, GID: %d, RootHash: %v", d.Name, d.Mode, d.UID, d.GID, d.RootHash)
+	b := new(bytes.Buffer)
+	e := gob.NewEncoder(b)
+	e.Encode(d.Children)
+	return fmt.Sprintf("Name: %s, Mode: %d, UID: %d, GID: %d, Children: %v, RootHash: %v", d.Name, d.Mode, d.UID, d.GID, b.Bytes(), d.RootHash)
 }
 
 // verify generates a hash from d, and compares it with expected.
@@ -201,6 +206,9 @@ type GenerateParams struct {
 	UID uint32
 	// GID is the group ID of the target file.
 	GID uint32
+	// Children is a map of children names for a directory. It should be
+	// empty for a regular file.
+	Children map[string]bool
 	// HashAlgorithms is the algorithms used to hash data.
 	HashAlgorithms int
 	// TreeReader is a reader for the Merkle tree.
@@ -292,6 +300,7 @@ func Generate(params *GenerateParams) ([]byte, error) {
 		Mode:     params.Mode,
 		UID:      params.UID,
 		GID:      params.GID,
+		Children: params.Children,
 		RootHash: root,
 	}
 	return hashData([]byte(descriptor.String()), params.HashAlgorithms)
@@ -316,6 +325,9 @@ type VerifyParams struct {
 	UID uint32
 	// GID is the group ID of the target file.
 	GID uint32
+	// Children is a map of children names for a directory. It should be
+	// empty for a regular file.
+	Children map[string]bool
 	// HashAlgorithms is the algorithms used to hash data.
 	HashAlgorithms int
 	// ReadOffset is the offset of the data range to be verified.
@@ -345,6 +357,7 @@ func verifyMetadata(params *VerifyParams, layout *Layout) error {
 		Mode:     params.Mode,
 		UID:      params.UID,
 		GID:      params.GID,
+		Children: params.Children,
 		RootHash: root,
 	}
 	return descriptor.verify(params.Expected, params.HashAlgorithms)
@@ -401,10 +414,11 @@ func Verify(params *VerifyParams) (int64, error) {
 			}
 		}
 		descriptor := VerityDescriptor{
-			Name: params.Name,
-			Mode: params.Mode,
-			UID:  params.UID,
-			GID:  params.GID,
+			Name:     params.Name,
+			Mode:     params.Mode,
+			UID:      params.UID,
+			GID:      params.GID,
+			Children: params.Children,
 		}
 		if err := verifyBlock(params.Tree, &descriptor, &layout, buf, i, params.HashAlgorithms, params.Expected); err != nil {
 			return 0, err

@@ -185,42 +185,42 @@ func TestGenerate(t *testing.T) {
 		{
 			data:           bytes.Repeat([]byte{0}, usermem.PageSize),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA256,
-			expectedHash:   []byte{64, 253, 58, 72, 192, 131, 82, 184, 193, 33, 108, 142, 43, 46, 179, 134, 244, 21, 29, 190, 14, 39, 66, 129, 6, 46, 200, 211, 30, 247, 191, 252},
+			expectedHash:   []byte{223, 189, 205, 68, 98, 218, 113, 7, 41, 233, 46, 166, 223, 35, 83, 87, 161, 45, 63, 32, 59, 171, 129, 80, 149, 74, 234, 132, 161, 35, 61, 103},
 		},
 		{
 			data:           bytes.Repeat([]byte{0}, usermem.PageSize),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA512,
-			expectedHash:   []byte{14, 27, 126, 158, 9, 94, 163, 51, 243, 162, 82, 167, 183, 127, 93, 121, 221, 23, 184, 59, 104, 166, 111, 49, 161, 195, 229, 111, 121, 201, 233, 68, 10, 154, 78, 142, 154, 236, 170, 156, 110, 167, 15, 144, 155, 97, 241, 235, 202, 233, 246, 217, 138, 88, 152, 179, 238, 46, 247, 185, 125, 20, 101, 201},
+			expectedHash:   []byte{227, 189, 121, 17, 100, 232, 169, 0, 71, 251, 255, 155, 150, 113, 149, 231, 22, 166, 17, 111, 87, 151, 57, 247, 5, 61, 89, 230, 182, 246, 102, 62, 184, 173, 164, 69, 32, 79, 176, 199, 187, 26, 134, 125, 239, 153, 224, 151, 237, 157, 2, 169, 148, 34, 234, 164, 51, 121, 54, 228, 59, 149, 4, 226},
 		},
 		{
 			data:           bytes.Repeat([]byte{0}, 128*usermem.PageSize+1),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA256,
-			expectedHash:   []byte{182, 223, 218, 62, 65, 185, 160, 219, 93, 119, 186, 88, 205, 32, 122, 231, 173, 72, 78, 76, 65, 57, 177, 146, 159, 39, 44, 123, 230, 156, 97, 26},
+			expectedHash:   []byte{214, 160, 137, 118, 150, 81, 233, 191, 155, 11, 41, 165, 100, 202, 172, 180, 25, 135, 252, 139, 165, 221, 86, 51, 235, 46, 152, 159, 209, 99, 160, 10},
 		},
 		{
 			data:           bytes.Repeat([]byte{0}, 128*usermem.PageSize+1),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA512,
-			expectedHash:   []byte{55, 204, 240, 1, 224, 252, 58, 131, 251, 174, 45, 140, 107, 57, 118, 11, 18, 236, 203, 204, 19, 59, 27, 196, 3, 78, 21, 7, 22, 98, 197, 128, 17, 128, 90, 122, 54, 83, 253, 108, 156, 67, 59, 229, 236, 241, 69, 88, 99, 44, 127, 109, 204, 183, 150, 232, 187, 57, 228, 137, 209, 235, 241, 172},
+			expectedHash:   []byte{220, 114, 239, 161, 248, 191, 247, 51, 119, 211, 134, 33, 203, 174, 69, 184, 130, 132, 30, 141, 105, 90, 234, 66, 220, 79, 72, 161, 116, 101, 76, 66, 232, 158, 64, 150, 50, 173, 169, 208, 244, 237, 93, 180, 23, 163, 117, 179, 249, 124, 179, 135, 22, 5, 91, 28, 72, 13, 161, 208, 148, 248, 25, 51},
 		},
 		{
 			data:           []byte{'a'},
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA256,
-			expectedHash:   []byte{28, 201, 8, 36, 150, 178, 111, 5, 193, 212, 129, 205, 206, 124, 211, 90, 224, 142, 81, 183, 72, 165, 243, 240, 242, 241, 76, 127, 101, 61, 63, 11},
+			expectedHash:   []byte{212, 244, 198, 19, 218, 223, 145, 120, 40, 250, 210, 44, 49, 7, 80, 94, 13, 93, 68, 140, 47, 129, 54, 184, 172, 238, 108, 231, 254, 205, 238, 167},
 		},
 		{
 			data:           []byte{'a'},
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA512,
-			expectedHash:   []byte{207, 233, 114, 94, 113, 212, 243, 160, 59, 232, 226, 77, 28, 81, 176, 61, 211, 213, 222, 190, 148, 196, 90, 166, 237, 56, 113, 148, 230, 154, 23, 105, 14, 97, 144, 211, 12, 122, 226, 207, 167, 203, 136, 193, 38, 249, 227, 187, 92, 238, 101, 97, 170, 255, 246, 209, 246, 98, 241, 150, 175, 253, 173, 206},
+			expectedHash:   []byte{67, 124, 0, 139, 172, 188, 95, 101, 5, 221, 121, 110, 234, 147, 61, 39, 70, 39, 2, 138, 154, 39, 96, 72, 13, 181, 152, 174, 129, 217, 252, 123, 161, 72, 251, 129, 159, 116, 74, 246, 196, 240, 179, 149, 247, 207, 85, 103, 226, 4, 6, 191, 183, 83, 101, 102, 152, 163, 66, 226, 210, 161, 63, 112},
 		},
 		{
 			data:           bytes.Repeat([]byte{'a'}, usermem.PageSize),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA256,
-			expectedHash:   []byte{106, 58, 160, 152, 41, 68, 38, 108, 245, 74, 177, 84, 64, 193, 19, 176, 249, 86, 27, 193, 85, 164, 99, 240, 79, 104, 148, 222, 76, 46, 191, 79},
+			expectedHash:   []byte{246, 233, 20, 171, 23, 54, 209, 183, 68, 159, 190, 183, 150, 91, 47, 12, 240, 209, 79, 118, 180, 202, 211, 218, 136, 123, 10, 234, 230, 99, 42, 157},
 		},
 		{
 			data:           bytes.Repeat([]byte{'a'}, usermem.PageSize),
 			hashAlgorithms: linux.FS_VERITY_HASH_ALG_SHA512,
-			expectedHash:   []byte{110, 103, 29, 250, 27, 211, 235, 119, 112, 65, 49, 156, 6, 92, 66, 105, 133, 1, 187, 172, 169, 13, 186, 34, 105, 72, 252, 131, 12, 159, 91, 188, 79, 184, 240, 227, 40, 164, 72, 193, 65, 31, 227, 153, 191, 6, 117, 42, 82, 122, 33, 255, 92, 215, 215, 249, 2, 131, 170, 134, 39, 192, 222, 33},
+			expectedHash:   []byte{152, 208, 225, 159, 11, 10, 5, 106, 164, 41, 103, 212, 122, 192, 197, 221, 242, 117, 240, 252, 83, 45, 224, 236, 194, 124, 192, 4, 238, 94, 200, 55, 48, 153, 243, 123, 92, 180, 198, 113, 64, 34, 78, 71, 134, 5, 60, 64, 4, 166, 85, 3, 189, 211, 64, 167, 131, 187, 102, 232, 112, 190, 191, 9},
 		},
 	}
 
@@ -234,6 +234,7 @@ func TestGenerate(t *testing.T) {
 					Mode:                  defaultMode,
 					UID:                   defaultUID,
 					GID:                   defaultGID,
+					Children:              map[string]bool{},
 					HashAlgorithms:        tc.hashAlgorithms,
 					TreeReader:            &tree,
 					TreeWriter:            &tree,
@@ -273,12 +274,13 @@ func TestVerify(t *testing.T) {
 		// A byte in input data is modified during the test. If the
 		// modified byte falls in verification range, Verify should
 		// fail, otherwise Verify should still succeed.
-		modifyByte    int64
-		modifyName    bool
-		modifyMode    bool
-		modifyUID     bool
-		modifyGID     bool
-		shouldSucceed bool
+		modifyByte     int64
+		modifyName     bool
+		modifyMode     bool
+		modifyUID      bool
+		modifyGID      bool
+		modifyChildren bool
+		shouldSucceed  bool
 	}{
 		// Verify range start outside the data range should fail.
 		{
@@ -349,6 +351,15 @@ func TestVerify(t *testing.T) {
 			modifyByte:    0,
 			modifyGID:     true,
 			shouldSucceed: false,
+		},
+		// Modified Children should fail verification.
+		{
+			dataSize:       usermem.PageSize,
+			verifyStart:    0,
+			verifySize:     0,
+			modifyByte:     0,
+			modifyChildren: true,
+			shouldSucceed:  false,
 		},
 		// The test cases below use a block-aligned verify range.
 		// Modifying a byte in the verified range should cause verify
@@ -443,6 +454,7 @@ func TestVerify(t *testing.T) {
 						Mode:                  defaultMode,
 						UID:                   defaultUID,
 						GID:                   defaultGID,
+						Children:              map[string]bool{},
 						HashAlgorithms:        hashAlgorithms,
 						TreeReader:            &tree,
 						TreeWriter:            &tree,
@@ -473,6 +485,7 @@ func TestVerify(t *testing.T) {
 						Mode:                  defaultMode,
 						UID:                   defaultUID,
 						GID:                   defaultGID,
+						Children:              map[string]bool{},
 						HashAlgorithms:        hashAlgorithms,
 						ReadOffset:            tc.verifyStart,
 						ReadSize:              tc.verifySize,
@@ -490,6 +503,9 @@ func TestVerify(t *testing.T) {
 					}
 					if tc.modifyGID {
 						verifyParams.GID = defaultGID + 1
+					}
+					if tc.modifyChildren {
+						verifyParams.Children["abc"] = true
 					}
 					if tc.shouldSucceed {
 						n, err := Verify(&verifyParams)
@@ -534,6 +550,7 @@ func TestVerifyRandom(t *testing.T) {
 				Mode:                  defaultMode,
 				UID:                   defaultUID,
 				GID:                   defaultGID,
+				Children:              map[string]bool{},
 				HashAlgorithms:        hashAlgorithms,
 				TreeReader:            &tree,
 				TreeWriter:            &tree,
@@ -567,6 +584,7 @@ func TestVerifyRandom(t *testing.T) {
 				Mode:                  defaultMode,
 				UID:                   defaultUID,
 				GID:                   defaultGID,
+				Children:              map[string]bool{},
 				HashAlgorithms:        hashAlgorithms,
 				ReadOffset:            start,
 				ReadSize:              size,
