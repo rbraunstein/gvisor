@@ -323,6 +323,30 @@ packetimpact_testbench(
 )
 
 packetimpact_testbench(
+    name = "ipv6_fragmented_icmp_echo_request",
+    srcs = ["ipv6_fragmented_icmp_echo_request_test.go"],
+    deps = [
+        "//pkg/tcpip",
+        "//pkg/tcpip/buffer",
+        "//pkg/tcpip/header",
+        "//test/packetimpact/testbench",
+        "@org_golang_x_sys//unix:go_default_library",
+    ],
+)
+
+packetimpact_testbench(
+    name = "ipv6_fragmented_icmp_echo_request2",
+    srcs = ["ipv6_fragmented_icmp_echo_request2_test.go"],
+    deps = [
+        "//pkg/tcpip",
+        "//pkg/tcpip/buffer",
+        "//pkg/tcpip/header",
+        "//test/packetimpact/testbench",
+        "@org_golang_x_sys//unix:go_default_library",
+    ],
+)
+
+packetimpact_testbench(
     name = "udp_send_recv_dgram",
     srcs = ["udp_send_recv_dgram_test.go"],
     deps = [
