@@ -629,6 +629,47 @@ TEST(SendFileTest, SendFileToPipe) {
               SyscallSucceedsWithValue(kDataSize));
 }
 
+static volatile int alarmed = 0;
+void AlarmHandler(int sig, siginfo_t* info, void* context) { alarmed = 1; }
+
+TEST(SendFileTest, ToEventFDDoesNotSpin) {
+  // Writes to eventfd that would cause the value to go over the max can return
+  // EWOULDBLOCK. We must not spin in that case. See b/172075629.
+
+  FileDescriptor efd = ASSERT_NO_ERRNO_AND_VALUE(NewEventFD(0, 0));
+
+  // Create a file and fill it with data that would cause eventfd to overflow
+  // max if written.
+  uint64 data[4096];
+  memset(data, 0x7f, sizeof(data));
+  data[0] = 0xffffffffffffffe;
+  data[1] = 0xfffffffffffffffe;
+  auto file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFileWith(
+      GetAbsoluteTestTmpdir(), reinterpret_cast<char*>(data),
+      TempPath::kDefaultFileMode));
+  auto fd = ASSERT_NO_ERRNO_AND_VALUE(Open(file.path(), O_RDWR));
+  ASSERT_THAT(ftruncate(fd.get(), 0x200004), SyscallSucceeds());
+  ASSERT_THAT(lseek(fd.get(), SEEK_SET, 0), SyscallSucceeds());
+
+  // Setup an alarm handler.
+  struct sigaction sa;
+  sa.sa_sigaction = AlarmHandler;
+  sigfillset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO;
+  ASSERT_THAT(sigaction(SIGALRM, &sa, nullptr), SyscallSucceeds());
+
+  // Alarm in 1 second.
+  ASSERT_THAT(alarm(1), SyscallSucceeds());
+
+  // Now splice the file to the eventfd. This should block, but not spin, and
+  // should return only 8 bytes written.
+  EXPECT_THAT(sendfile(efd.get(), fd.get(), 0, 0xf10002),
+              SyscallSucceedsWithValue(8));
+
+  // Alarm should have been handled.
+  EXPECT_EQ(alarmed, 1);
+}
+
 }  // namespace
 
 }  // namespace testing

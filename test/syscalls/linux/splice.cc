@@ -772,6 +772,46 @@ TEST(SpliceTest, FromPipeToDevZero) {
               SyscallSucceedsWithValue(0));
 }
 
+static volatile int alarmed = 0;
+void AlarmHandler(int sig, siginfo_t* info, void* context) { alarmed = 1; }
+
+TEST(SpliceTest, ToPipeWithSmallCapacityDoesNotSpin) {
+  // Writes to a pipe that are less than PIPE_BUF must be atomic. This test
+  // creates a pipe with only 128 bytes of capacity (< PIPE_BUF) and checks that
+  // splicing to the pipe does not spin. See b/170743336.
+
+  // Create a file with one page of data.
+  char data[4096];
+  auto file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFileWith(
+      GetAbsoluteTestTmpdir(), data, TempPath::kDefaultFileMode));
+  auto fd = ASSERT_NO_ERRNO_AND_VALUE(Open(file.path(), O_RDONLY));
+
+  // Create a pipe with size 4096, and fill all but 128 bytes of it.
+  int p[2];
+  ASSERT_THAT(pipe(p), SyscallSucceeds());
+  ASSERT_THAT(fcntl(p[1], F_SETPIPE_SZ, 4096), SyscallSucceeds());
+  char buf[4096 - 128];
+  ASSERT_THAT(write(p[1], buf, 4096 - 128), SyscallSucceeds());
+
+  // Setup an alarm handler.
+  struct sigaction sa;
+  sa.sa_sigaction = AlarmHandler;
+  sigfillset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO;
+  ASSERT_THAT(sigaction(SIGALRM, &sa, nullptr), SyscallSucceeds());
+
+  // Alarm in 1 second.
+  ASSERT_THAT(alarm(1), SyscallSucceeds());
+
+  // Now splice the file to the pipe. This should block, but not spin, and
+  // should return EINTR because it is interrupted by the alarm.
+  EXPECT_THAT(splice(fd.get(), 0, p[1], 0, 4096, 0),
+              SyscallFailsWithErrno(EINTR));
+
+  // Alarm should have been handled.
+  EXPECT_EQ(alarmed, 1);
+}
+
 }  // namespace
 
 }  // namespace testing
