@@ -469,9 +469,6 @@ func (fs *filesystem) doCreateAt(ctx context.Context, rp *vfs.ResolvingPath, dir
 	if name == "." || name == ".." {
 		return syserror.EEXIST
 	}
-	if !dir && rp.MustBeDir() {
-		return syserror.ENOENT
-	}
 	if parent.vfsd.IsDead() {
 		return syserror.ENOENT
 	}
@@ -493,6 +490,10 @@ func (fs *filesystem) doCreateAt(ctx context.Context, rp *vfs.ResolvingPath, dir
 	}
 	if childLayer.existsInOverlay() {
 		return syserror.EEXIST
+	}
+
+	if !dir && rp.MustBeDir() {
+		return syserror.ENOENT
 	}
 
 	// Ensure that the parent directory is copied-up so that we can create the

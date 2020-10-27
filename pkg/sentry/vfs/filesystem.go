@@ -169,7 +169,7 @@ type FilesystemImpl interface {
 	//
 	// - If a file already exists at rp, LinkAt returns EEXIST.
 	//
-	// - If rp.MustBeDir(), LinkAt returns ENOENT.
+	// - If rp.MustBeDir() and no file exists at rp, LinkAt returns ENOENT.
 	//
 	// - If the directory in which the link would be created has been removed
 	// by RmdirAt or RenameAt, LinkAt returns ENOENT.
@@ -221,7 +221,7 @@ type FilesystemImpl interface {
 	//
 	// - If a file already exists at rp, MknodAt returns EEXIST.
 	//
-	// - If rp.MustBeDir(), MknodAt returns ENOENT.
+	// - If rp.MustBeDir() and no file exists at rp, MknodAt returns ENOENT.
 	//
 	// - If the directory in which the file would be created has been removed
 	// by RmdirAt or RenameAt, MknodAt returns ENOENT.
@@ -381,7 +381,7 @@ type FilesystemImpl interface {
 	//
 	// - If a file already exists at rp, SymlinkAt returns EEXIST.
 	//
-	// - If rp.MustBeDir(), SymlinkAt returns ENOENT.
+	// - If rp.MustBeDir() and no file exists at rp, SymlinkAt returns ENOENT.
 	//
 	// - If the directory in which the symbolic link would be created has been
 	// removed by RmdirAt or RenameAt, SymlinkAt returns ENOENT.

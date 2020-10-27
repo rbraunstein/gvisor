@@ -35,7 +35,10 @@ import (
 // defered functions before exiting. It returns an exit code that should be
 // passed to os.Exit.
 func RunTests(lang, image, excludeFile string, batchSize int, timeout time.Duration) int {
-	// Get tests to exclude..
+	// TODO(gvisor.dev/issue/1624): Remove those tests from all exclude lists
+	// that only fail with VFS1.
+
+	// Get tests to exclude.
 	excludes, err := getExcludes(excludeFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting exclude list: %s\n", err.Error())
