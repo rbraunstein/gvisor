@@ -55,7 +55,8 @@ var (
 	addUDSTree = flag.Bool("add-uds-tree", false, "expose a tree of UDS utilities for use in tests")
 	// TODO(gvisor.dev/issue/4572): properly support leak checking for runsc, and
 	// set to true as the default for the test runner.
-	leakCheck = flag.Bool("leak-check", false, "check for reference leaks")
+	leakCheck        = flag.Bool("leak-check", false, "check for reference leaks")
+	userNetNamespace = flag.Bool("isolate-native-tests-in-ns", false, "forces native test to use CLONE_NEWUSER | CLONE_NEWNET")
 )
 
 // runTestCaseNative runs the test case directly on the host machine.
@@ -110,12 +111,36 @@ func runTestCaseNative(testBin string, tc gtest.TestCase, t *testing.T) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	if *userNetNamespace {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
+			UidMappings: []syscall.SysProcIDMap{
+				{
+					ContainerID: 0,
+					HostID:      os.Getuid(),
+					Size:        1,
+				},
+			},
+			GidMappings: []syscall.SysProcIDMap{
+				{
+					ContainerID: 0,
+					HostID:      os.Getgid(),
+					Size:        1,
+				},
+			},
+		}
+	}
 
 	if specutils.HasCapabilities(capability.CAP_SYS_ADMIN) {
 		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWUTS
 	}
 
 	if specutils.HasCapabilities(capability.CAP_NET_ADMIN) {
+		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWNET
+	}
+
+	if *userNetNamespace {
+		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWUSER
 		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWNET
 	}
 
