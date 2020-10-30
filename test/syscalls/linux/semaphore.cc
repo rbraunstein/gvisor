@@ -545,11 +545,11 @@ TEST(SemaphoreTest, SemCtlIpcStat) {
 
 // The funcion keeps calling semctl's GETZCNT command until
 // the return value is not less than target.
-int WaitSemzcnt(int semid, int target) {
+int WaitSemctl(int semid, int target, int cmd) {
   constexpr absl::Duration timeout = absl::Seconds(10);
   int semcnt = 0;
   for (auto start = absl::Now(); absl::Now() - start < timeout;) {
-    semcnt = semctl(semid, 0, GETZCNT);
+    semcnt = semctl(semid, 0, cmd);
     if (semcnt >= target) {
       break;
     }
@@ -590,7 +590,8 @@ TEST(SemaphoreTest, SemopGetzcnt) {
     }
     children.push_back(child_pid);
   }
-  EXPECT_THAT(WaitSemzcnt(sem.get(), kLoops), SyscallSucceedsWithValue(kLoops));
+  EXPECT_THAT(WaitSemctl(sem.get(), kLoops, GETZCNT),
+              SyscallSucceedsWithValue(kLoops));
   // Set semval to 0, which wakes up children that sleep on the semop.
   ASSERT_THAT(semctl(sem.get(), 0, SETVAL, 0), SyscallSucceeds());
   for (const auto& child_pid : children) {
@@ -621,7 +622,7 @@ TEST(SemaphoreTest, SemopGetzcntOnSetRemoval) {
     _exit(0);
   }
 
-  EXPECT_THAT(WaitSemzcnt(semid, 1), SyscallSucceedsWithValue(1));
+  EXPECT_THAT(WaitSemctl(semid, 1, GETZCNT), SyscallSucceedsWithValue(1));
   // Remove the semaphore set, which fails the sleep semop.
   ASSERT_THAT(semctl(semid, 0, IPC_RMID), SyscallSucceeds());
   int status;
@@ -647,7 +648,7 @@ TEST(SemaphoreTest, SemopGetzcntOnSignal) {
     ASSERT_THAT(semop(sem.get(), &buf, 1), SyscallFailsWithErrno(EINTR));
     _exit(0);
   }
-  EXPECT_THAT(WaitSemzcnt(sem.get(), 1), SyscallSucceedsWithValue(1));
+  EXPECT_THAT(WaitSemctl(sem.get(), 1, GETZCNT), SyscallSucceedsWithValue(1));
   // Send a signal to the child, which fails the sleep semop.
   ASSERT_EQ(kill(child_pid, SIGHUP), 0);
   int status;
@@ -655,6 +656,103 @@ TEST(SemaphoreTest, SemopGetzcntOnSignal) {
               SyscallSucceedsWithValue(child_pid));
   EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
   EXPECT_EQ(semctl(sem.get(), 0, GETZCNT), 0);
+}
+
+TEST(SemaphoreTest, SemopGetncnt) {
+  // Drop CAP_IPC_OWNER which allows us to bypass semaphore permissions.
+  ASSERT_NO_ERRNO(SetCapability(CAP_IPC_OWNER, false));
+  // Create a write only semaphore set.
+  AutoSem sem(semget(IPC_PRIVATE, 1, 0200 | IPC_CREAT));
+  ASSERT_THAT(sem.get(), SyscallSucceeds());
+
+  // No read permission to retrieve semzcnt.
+  EXPECT_THAT(semctl(sem.get(), 0, GETNCNT), SyscallFailsWithErrno(EACCES));
+
+  // Remove the calling thread's read permission.
+  struct semid_ds ds = {};
+  ds.sem_perm.uid = getuid();
+  ds.sem_perm.gid = getgid();
+  ds.sem_perm.mode = 0600;
+  ASSERT_THAT(semctl(sem.get(), 0, IPC_SET, &ds), SyscallSucceeds());
+
+  std::vector<pid_t> children;
+
+  struct sembuf buf = {};
+  buf.sem_num = 0;
+  buf.sem_op = -1;
+  constexpr size_t kLoops = 10;
+  for (auto i = 0; i < kLoops; i++) {
+    auto child_pid = fork();
+    if (child_pid == 0) {
+      ASSERT_THAT(RetryEINTR(semop)(sem.get(), &buf, 1), SyscallSucceeds());
+      _exit(0);
+    }
+    children.push_back(child_pid);
+  }
+  EXPECT_THAT(WaitSemctl(sem.get(), kLoops, GETNCNT),
+              SyscallSucceedsWithValue(kLoops));
+  // Set semval to 1, which wakes up children that sleep on the semop.
+  ASSERT_THAT(semctl(sem.get(), 0, SETVAL, kLoops), SyscallSucceeds());
+  for (const auto& child_pid : children) {
+    int status;
+    ASSERT_THAT(RetryEINTR(waitpid)(child_pid, &status, 0),
+                SyscallSucceedsWithValue(child_pid));
+    EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  }
+  EXPECT_EQ(semctl(sem.get(), 0, GETNCNT), 0);
+}
+
+TEST(SemaphoreTest, SemopGetncntOnSetRemoval) {
+  auto semid = semget(IPC_PRIVATE, 1, 0600 | IPC_CREAT);
+  ASSERT_THAT(semid, SyscallSucceeds());
+  ASSERT_EQ(semctl(semid, 0, GETNCNT), 0);
+
+  auto child_pid = fork();
+  if (child_pid == 0) {
+    struct sembuf buf = {};
+    buf.sem_num = 0;
+    buf.sem_op = -1;
+
+    ASSERT_THAT(RetryEINTR(semop)(semid, &buf, 1), SyscallFails());
+    // Ensure that wait will only unblock when the semaphore is removed. On
+    // EINTR retry it may race with deletion and return EINVAL.
+    ASSERT_TRUE(errno == EIDRM || errno == EINVAL) << "errno=" << errno;
+    _exit(0);
+  }
+
+  EXPECT_THAT(WaitSemctl(semid, 1, GETNCNT), SyscallSucceedsWithValue(1));
+  // Remove the semaphore set, which fails the sleep semop.
+  ASSERT_THAT(semctl(semid, 0, IPC_RMID), SyscallSucceeds());
+  int status;
+  ASSERT_THAT(RetryEINTR(waitpid)(child_pid, &status, 0),
+              SyscallSucceedsWithValue(child_pid));
+  EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  EXPECT_THAT(semctl(semid, 0, GETNCNT), SyscallFailsWithErrno(EINVAL));
+}
+
+TEST(SemaphoreTest, SemopGetncntOnSignal) {
+  AutoSem sem(semget(IPC_PRIVATE, 1, 0600 | IPC_CREAT));
+  ASSERT_THAT(sem.get(), SyscallSucceeds());
+  ASSERT_EQ(semctl(sem.get(), 0, GETNCNT), 0);
+
+  auto child_pid = fork();
+  if (child_pid == 0) {
+    signal(SIGHUP, [](int sig) -> void {});
+    struct sembuf buf = {};
+    buf.sem_num = 0;
+    buf.sem_op = -1;
+
+    ASSERT_THAT(semop(sem.get(), &buf, 1), SyscallFailsWithErrno(EINTR));
+    _exit(0);
+  }
+  EXPECT_THAT(WaitSemctl(sem.get(), 1, GETNCNT), SyscallSucceedsWithValue(1));
+  // Send a signal to the child, which fails the sleep semop.
+  ASSERT_EQ(kill(child_pid, SIGHUP), 0);
+  int status;
+  ASSERT_THAT(RetryEINTR(waitpid)(child_pid, &status, 0),
+              SyscallSucceedsWithValue(child_pid));
+  EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  EXPECT_EQ(semctl(sem.get(), 0, GETNCNT), 0);
 }
 
 }  // namespace
