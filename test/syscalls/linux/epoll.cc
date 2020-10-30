@@ -39,11 +39,6 @@ namespace {
 constexpr int kFDsPerEpoll = 3;
 constexpr uint64_t kMagicConstant = 0x0102030405060708;
 
-uint64_t ms_elapsed(const struct timespec* begin, const struct timespec* end) {
-  return (end->tv_sec - begin->tv_sec) * 1000 +
-         (end->tv_nsec - begin->tv_nsec) / 1000000;
-}
-
 TEST(EpollTest, AllWritable) {
   auto epollfd = ASSERT_NO_ERRNO_AND_VALUE(NewEpollFD());
   std::vector<FileDescriptor> eventfds;
