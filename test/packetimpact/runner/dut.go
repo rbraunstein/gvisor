@@ -389,18 +389,18 @@ func AddressInSubnet(addr net.IP, subnet net.IPNet) net.IP {
 }
 
 // deviceByIP finds a deviceInfo and device name from an IP address.
-func deviceByIP(ctx context.Context, d *dockerutil.Container, ip net.IP) (string, netdevs.DeviceInfo, error) {
+func deviceByIP(ctx context.Context, d *dockerutil.Container, ip net.IP) (string, *netdevs.DeviceInfo, error) {
 	out, err := d.Exec(ctx, dockerutil.ExecOpts{}, "ip", "addr", "show")
 	if err != nil {
-		return "", netdevs.DeviceInfo{}, fmt.Errorf("listing devices on %s container: %w\n%s", d.Name, err, out)
+		return "", nil, fmt.Errorf("listing devices on %s container: %w\n%s", d.Name, err, out)
 	}
 	devs, err := netdevs.ParseDevices(out)
 	if err != nil {
-		return "", netdevs.DeviceInfo{}, fmt.Errorf("parsing devices from %s container: %w\n%s", d.Name, err, out)
+		return "", nil, fmt.Errorf("parsing devices from %s container: %w\n%s", d.Name, err, out)
 	}
 	testDevice, deviceInfo, err := netdevs.FindDeviceByIP(ip, devs)
 	if err != nil {
-		return "", netdevs.DeviceInfo{}, fmt.Errorf("can't find deviceInfo for container %s: %w", d.Name, err)
+		return "", nil, fmt.Errorf("can't find deviceInfo for container %s: %w", d.Name, err)
 	}
 	return testDevice, deviceInfo, nil
 }
