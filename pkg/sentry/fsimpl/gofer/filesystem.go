@@ -1161,18 +1161,18 @@ func (d *dentry) createAndOpenChildLocked(ctx context.Context, rp *vfs.Resolving
 	// Incorporate the fid that was opened by lcreate.
 	useRegularFileFD := child.fileType() == linux.S_IFREG && !d.fs.opts.regularFilesUseSpecialFileFD
 	if useRegularFileFD {
+		openFD := int32(fdobj.Release())
 		child.handleMu.Lock()
 		if vfs.MayReadFileWithOpenFlags(opts.Flags) {
 			child.readFile = openFile
 			if fdobj != nil {
-				child.hostFD = int32(fdobj.Release())
+				child.readFD = openFD
+				child.mmapFD = openFD
 			}
-		} else if fdobj != nil {
-			// Can't use fdobj if it's not readable.
-			fdobj.Close()
 		}
 		if vfs.MayWriteFileWithOpenFlags(opts.Flags) {
 			child.writeFile = openFile
+			child.writeFD = openFD
 		}
 		child.handleMu.Unlock()
 	}
