@@ -283,7 +283,7 @@ func (r *Route) isV4Broadcast(addr tcpip.Address) bool {
 		return true
 	}
 
-	subnet := r.addressEndpoint.AddressWithPrefix().Subnet()
+	subnet := r.addressEndpoint.Subnet()
 	return subnet.IsBroadcast(addr)
 }
 
