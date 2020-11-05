@@ -108,7 +108,6 @@ type endpoint struct {
 	multicastLoop  bool
 	portFlags      ports.Flags
 	bindToDevice   tcpip.NICID
-	broadcast      bool
 	noChecksum     bool
 
 	lastErrorMu sync.Mutex   `state:"nosave"`
@@ -157,6 +156,9 @@ type endpoint struct {
 
 	// linger is used for SO_LINGER socket option.
 	linger tcpip.LingerOption
+
+	// so stores all socket level options.
+	so tcpip.SocketOptions
 }
 
 // +stateify savable
@@ -503,7 +505,7 @@ func (e *endpoint) write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, <-c
 		resolve = route.Resolve
 	}
 
-	if !e.broadcast && route.IsOutboundBroadcast() {
+	if !e.so.BroadcastEnabled && route.IsOutboundBroadcast() {
 		return 0, nil, tcpip.ErrBroadcastDisabled
 	}
 
@@ -550,7 +552,7 @@ func (e *endpoint) SetSockOptBool(opt tcpip.SockOptBool, v bool) *tcpip.Error {
 	switch opt {
 	case tcpip.BroadcastOption:
 		e.mu.Lock()
-		e.broadcast = v
+		e.so.SetSockOptBool(opt, v)
 		e.mu.Unlock()
 
 	case tcpip.MulticastLoopOption:
@@ -608,6 +610,7 @@ func (e *endpoint) SetSockOptBool(opt tcpip.SockOptBool, v bool) *tcpip.Error {
 		}
 
 		e.v6only = v
+
 	}
 
 	return nil
@@ -827,9 +830,9 @@ func (e *endpoint) GetSockOptBool(opt tcpip.SockOptBool) (bool, *tcpip.Error) {
 	switch opt {
 	case tcpip.BroadcastOption:
 		e.mu.RLock()
-		v := e.broadcast
+		v, err := e.so.GetSockOptBool(opt)
 		e.mu.RUnlock()
-		return v, nil
+		return v, err
 
 	case tcpip.KeepaliveEnabledOption:
 		return false, nil

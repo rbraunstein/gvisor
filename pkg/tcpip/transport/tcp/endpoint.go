@@ -440,9 +440,6 @@ type endpoint struct {
 	ttl               uint8
 	v6only            bool
 	isConnectNotified bool
-	// TCP should never broadcast but Linux nevertheless supports enabling/
-	// disabling SO_BROADCAST, albeit as a NOOP.
-	broadcast bool
 
 	// portFlags stores the current values of port related flags.
 	portFlags ports.Flags
@@ -685,6 +682,9 @@ type endpoint struct {
 
 	// linger is used for SO_LINGER socket option.
 	linger tcpip.LingerOption
+
+	// so stores all the socket level options.
+	so tcpip.SocketOptions
 }
 
 // UniqueID implements stack.TransportEndpoint.UniqueID.
@@ -1598,7 +1598,7 @@ func (e *endpoint) SetSockOptBool(opt tcpip.SockOptBool, v bool) *tcpip.Error {
 
 	case tcpip.BroadcastOption:
 		e.LockUser()
-		e.broadcast = v
+		e.so.SetSockOptBool(opt, v)
 		e.UnlockUser()
 
 	case tcpip.CorkOption:
@@ -1949,9 +1949,9 @@ func (e *endpoint) GetSockOptBool(opt tcpip.SockOptBool) (bool, *tcpip.Error) {
 	switch opt {
 	case tcpip.BroadcastOption:
 		e.LockUser()
-		v := e.broadcast
+		v, err := e.so.GetSockOptBool(opt)
 		e.UnlockUser()
-		return v, nil
+		return v, err
 
 	case tcpip.CorkOption:
 		return atomic.LoadUint32(&e.cork) != 0, nil

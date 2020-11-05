@@ -818,5 +818,16 @@ TEST_P(AllSocketPairTest, GetSockoptProtocol) {
   }
 }
 
+TEST_P(AllSocketPairTest, GetSockoptBroadcast) {
+  auto sockets = ASSERT_NO_ERRNO_AND_VALUE(NewSocketPair());
+  int opt = -1;
+  socklen_t optlen = sizeof(opt);
+  EXPECT_THAT(
+      getsockopt(sockets->first_fd(), SOL_SOCKET, SO_BROADCAST, &opt, &optlen),
+      SyscallSucceeds());
+  ASSERT_EQ(optlen, sizeof(opt));
+  EXPECT_EQ(opt, 0);
+}
+
 }  // namespace testing
 }  // namespace gvisor

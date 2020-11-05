@@ -2012,3 +2012,31 @@ func DeleteDanglingEndpoint(e Endpoint) {
 // AsyncLoading is the global barrier for asynchronous endpoint loading
 // activities.
 var AsyncLoading sync.WaitGroup
+
+// SocketOptions contains all the variables which store values for socket
+// level options.
+type SocketOptions struct {
+	BroadcastEnabled bool
+}
+
+// GetSockOptBool gets a socket option for cases where a return
+// value has the bool type.
+func (so *SocketOptions) GetSockOptBool(opt SockOptBool) (bool, *Error) {
+	switch opt {
+	case BroadcastOption:
+		v := so.BroadcastEnabled
+		return v, nil
+	}
+	return false, ErrUnknownProtocolOption
+}
+
+// SetSockOptBool sets a socket option for cases where a return
+// value has the bool type.
+func (so *SocketOptions) SetSockOptBool(opt SockOptBool, v bool) *Error {
+	switch opt {
+	case BroadcastOption:
+		so.BroadcastEnabled = v
+		return nil
+	}
+	return ErrUnknownProtocolOption
+}
