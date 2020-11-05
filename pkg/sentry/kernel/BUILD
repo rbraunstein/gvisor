@@ -224,6 +224,7 @@ go_library(
         "//pkg/cpuid",
         "//pkg/eventchannel",
         "//pkg/fspath",
+        "//pkg/goid",
         "//pkg/log",
         "//pkg/marshal",
         "//pkg/marshal/primitive",

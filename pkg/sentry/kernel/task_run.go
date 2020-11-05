@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/goid"
 	"gvisor.dev/gvisor/pkg/sentry/arch"
 	"gvisor.dev/gvisor/pkg/sentry/hostcpu"
 	ktime "gvisor.dev/gvisor/pkg/sentry/kernel/time"
@@ -57,6 +58,8 @@ type taskRunState interface {
 // make it visible in stack dumps. A goroutine for a given task can be identified
 // searching for Task.run()'s argument value.
 func (t *Task) run(threadID uintptr) {
+	t.goid = goid.Get()
+
 	// Construct t.blockingTimer here. We do this here because we can't
 	// reconstruct t.blockingTimer during restore in Task.afterLoad(), because
 	// kernel.timekeeper.SetClocks() hasn't been called yet.

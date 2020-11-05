@@ -63,6 +63,10 @@ import (
 type Task struct {
 	taskNode
 
+	// goid is the task goroutine's ID. goid is exclusive to the task
+	// goroutine.
+	goid int64 `state:"nosave"`
+
 	// runState is what the task goroutine is executing if it is not stopped.
 	// If runState is nil, the task goroutine should exit or has exited.
 	// runState is exclusive to the task goroutine.

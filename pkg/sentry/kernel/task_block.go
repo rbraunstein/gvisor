@@ -15,10 +15,12 @@
 package kernel
 
 import (
+	"fmt"
 	"runtime"
 	"runtime/trace"
 	"time"
 
+	"gvisor.dev/gvisor/pkg/goid"
 	ktime "gvisor.dev/gvisor/pkg/sentry/kernel/time"
 	"gvisor.dev/gvisor/pkg/syserror"
 )
@@ -32,6 +34,8 @@ import (
 //
 // - An error which is nil if an event is received from C, ETIMEDOUT if the timeout
 // expired, and syserror.ErrInterrupted if t is interrupted.
+//
+// Preconditions: The caller must be running on the task goroutine.
 func (t *Task) BlockWithTimeout(C chan struct{}, haveTimeout bool, timeout time.Duration) (time.Duration, error) {
 	if !haveTimeout {
 		return timeout, t.block(C, nil)
@@ -158,6 +162,11 @@ func (t *Task) block(C <-chan struct{}, timerChan <-chan struct{}) error {
 
 // SleepStart implements amutex.Sleeper.SleepStart.
 func (t *Task) SleepStart() <-chan struct{} {
+	// Check that the caller is running on the task goroutine.
+	if id := goid.Get(); id != t.goid {
+		panic(fmt.Sprintf("kernel.Task.SleepStart: called from goroutine %d (task goroutine is %d)", id, t.goid))
+	}
+
 	t.Deactivate()
 	t.accountTaskGoroutineEnter(TaskGoroutineBlockedInterruptible)
 	return t.interruptChan
@@ -183,6 +192,11 @@ func (t *Task) Interrupted() bool {
 
 // UninterruptibleSleepStart implements context.Context.UninterruptibleSleepStart.
 func (t *Task) UninterruptibleSleepStart(deactivate bool) {
+	// Check that the caller is running on the task goroutine.
+	if id := goid.Get(); id != t.goid {
+		panic(fmt.Sprintf("kernel.Task.SleepStart: called from goroutine %d (task goroutine is %d)", id, t.goid))
+	}
+
 	if deactivate {
 		t.Deactivate()
 	}
