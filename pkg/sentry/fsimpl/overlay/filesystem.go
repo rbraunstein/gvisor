@@ -22,6 +22,7 @@ import (
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/fspath"
+	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
 	"gvisor.dev/gvisor/pkg/sentry/socket/unix/transport"
 	"gvisor.dev/gvisor/pkg/sentry/vfs"
@@ -121,63 +122,63 @@ func (fs *filesystem) renameMuUnlockAndCheckDrop(ctx context.Context, ds **[]*de
 // * fs.renameMu must be locked.
 // * d.dirMu must be locked.
 // * !rp.Done().
-func (fs *filesystem) stepLocked(ctx context.Context, rp *vfs.ResolvingPath, d *dentry, mayFollowSymlinks bool, ds **[]*dentry) (*dentry, error) {
+func (fs *filesystem) stepLocked(ctx context.Context, rp *vfs.ResolvingPath, d *dentry, mayFollowSymlinks bool, ds **[]*dentry) (*dentry, bool, error) {
 	if !d.isDir() {
-		return nil, syserror.ENOTDIR
+		return nil, false, syserror.ENOTDIR
 	}
 	if err := d.checkPermissions(rp.Credentials(), vfs.MayExec); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 afterSymlink:
 	name := rp.Component()
 	if name == "." {
 		rp.Advance()
-		return d, nil
+		return d, false, nil
 	}
 	if name == ".." {
 		if isRoot, err := rp.CheckRoot(ctx, &d.vfsd); err != nil {
-			return nil, err
+			return nil, false, err
 		} else if isRoot || d.parent == nil {
 			rp.Advance()
-			return d, nil
+			return d, false, nil
 		}
 		if err := rp.CheckMount(ctx, &d.parent.vfsd); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		rp.Advance()
-		return d.parent, nil
+		return d.parent, false, nil
 	}
-	child, err := fs.getChildLocked(ctx, d, name, ds)
+	child, whiteout, err := fs.getChildLocked(ctx, d, name, ds)
 	if err != nil {
-		return nil, err
+		return nil, whiteout, err
 	}
 	if err := rp.CheckMount(ctx, &child.vfsd); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if child.isSymlink() && mayFollowSymlinks && rp.ShouldFollowSymlink() {
 		target, err := child.readlink(ctx)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if err := rp.HandleSymlink(target); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		goto afterSymlink // don't check the current directory again
 	}
 	rp.Advance()
-	return child, nil
+	return child, false, nil
 }
 
 // Preconditions:
 // * fs.renameMu must be locked.
 // * d.dirMu must be locked.
-func (fs *filesystem) getChildLocked(ctx context.Context, parent *dentry, name string, ds **[]*dentry) (*dentry, error) {
+func (fs *filesystem) getChildLocked(ctx context.Context, parent *dentry, name string, ds **[]*dentry) (*dentry, bool, error) {
 	if child, ok := parent.children[name]; ok {
-		return child, nil
+		return child, false, nil
 	}
-	child, err := fs.lookupLocked(ctx, parent, name)
+	child, whiteout, err := fs.lookupLocked(ctx, parent, name)
 	if err != nil {
-		return nil, err
+		return nil, whiteout, err
 	}
 	if parent.children == nil {
 		parent.children = make(map[string]*dentry)
@@ -185,18 +186,22 @@ func (fs *filesystem) getChildLocked(ctx context.Context, parent *dentry, name s
 	parent.children[name] = child
 	// child's refcount is initially 0, so it may be dropped after traversal.
 	*ds = appendDentry(*ds, child)
-	return child, nil
+	return child, false, nil
 }
 
+// The returned bool indicates whether the looked up child is a whiteout. It
+// only holds meaning when err is ENOENT.
+//
 // Preconditions:
 // * fs.renameMu must be locked.
 // * parent.dirMu must be locked.
-func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name string) (*dentry, error) {
+func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name string) (*dentry, bool, error) {
 	childPath := fspath.Parse(name)
 	child := fs.newDentry()
 	existsOnAnyLayer := false
 	var lookupErr error
 
+	whiteout := false
 	vfsObj := fs.vfsfs.VirtualFilesystem()
 	parent.iterLayers(func(parentVD vfs.VirtualDentry, isUpper bool) bool {
 		childVD, err := vfsObj.GetDentryAt(ctx, fs.creds, &vfs.PathOperation{
@@ -238,6 +243,7 @@ func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name str
 		if isWhiteout(&stat) {
 			// This is a whiteout, so it "doesn't exist" on this layer, and
 			// layers below this one are ignored.
+			whiteout = true
 			return false
 		}
 		isDir := stat.Mode&linux.S_IFMT == linux.S_IFDIR
@@ -288,11 +294,11 @@ func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name str
 
 	if lookupErr != nil {
 		child.destroyLocked(ctx)
-		return nil, lookupErr
+		return nil, whiteout, lookupErr
 	}
 	if !existsOnAnyLayer {
 		child.destroyLocked(ctx)
-		return nil, syserror.ENOENT
+		return nil, whiteout, syserror.ENOENT
 	}
 
 	// Device and inode numbers were copied from the topmost layer above;
@@ -306,7 +312,7 @@ func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name str
 		if err != nil {
 			ctx.Infof("overlay.filesystem.lookupLocked: failed to map lower layer device number (%d, %d) to an overlay-specific device number: %v", child.devMajor, child.devMinor, err)
 			child.destroyLocked(ctx)
-			return nil, err
+			return nil, whiteout, err
 		}
 		child.devMajor = linux.UNNAMED_MAJOR
 		child.devMinor = childDevMinor
@@ -315,7 +321,7 @@ func (fs *filesystem) lookupLocked(ctx context.Context, parent *dentry, name str
 	parent.IncRef()
 	child.parent = parent
 	child.name = name
-	return child, nil
+	return child, whiteout, nil
 }
 
 // lookupLayerLocked is similar to lookupLocked, but only returns information
@@ -414,7 +420,7 @@ func (ll lookupLayer) existsInOverlay() bool {
 func (fs *filesystem) walkParentDirLocked(ctx context.Context, rp *vfs.ResolvingPath, d *dentry, ds **[]*dentry) (*dentry, error) {
 	for !rp.Final() {
 		d.dirMu.Lock()
-		next, err := fs.stepLocked(ctx, rp, d, true /* mayFollowSymlinks */, ds)
+		next, _, err := fs.stepLocked(ctx, rp, d, true /* mayFollowSymlinks */, ds)
 		d.dirMu.Unlock()
 		if err != nil {
 			return nil, err
@@ -434,7 +440,7 @@ func (fs *filesystem) resolveLocked(ctx context.Context, rp *vfs.ResolvingPath, 
 	d := rp.Start().Impl().(*dentry)
 	for !rp.Done() {
 		d.dirMu.Lock()
-		next, err := fs.stepLocked(ctx, rp, d, true /* mayFollowSymlinks */, ds)
+		next, _, err := fs.stepLocked(ctx, rp, d, true /* mayFollowSymlinks */, ds)
 		d.dirMu.Unlock()
 		if err != nil {
 			return nil, err
@@ -797,9 +803,9 @@ afterTrailingSymlink:
 	}
 	// Determine whether or not we need to create a file.
 	parent.dirMu.Lock()
-	child, err := fs.stepLocked(ctx, rp, parent, false /* mayFollowSymlinks */, &ds)
+	child, whiteout, err := fs.stepLocked(ctx, rp, parent, false /* mayFollowSymlinks */, &ds)
 	if err == syserror.ENOENT && mayCreate {
-		fd, err := fs.createAndOpenLocked(ctx, rp, parent, &opts, &ds)
+		fd, err := fs.createAndOpenLocked(ctx, rp, parent, &opts, &ds, whiteout)
 		parent.dirMu.Unlock()
 		return fd, err
 	}
@@ -899,7 +905,7 @@ func (d *dentry) openCopiedUp(ctx context.Context, rp *vfs.ResolvingPath, opts *
 // Preconditions:
 // * parent.dirMu must be locked.
 // * parent does not already contain a child named rp.Component().
-func (fs *filesystem) createAndOpenLocked(ctx context.Context, rp *vfs.ResolvingPath, parent *dentry, opts *vfs.OpenOptions, ds **[]*dentry) (*vfs.FileDescription, error) {
+func (fs *filesystem) createAndOpenLocked(ctx context.Context, rp *vfs.ResolvingPath, parent *dentry, opts *vfs.OpenOptions, ds **[]*dentry, haveUpperWhiteout bool) (*vfs.FileDescription, error) {
 	creds := rp.Credentials()
 	if err := parent.checkPermissions(creds, vfs.MayWrite); err != nil {
 		return nil, err
@@ -924,19 +930,12 @@ func (fs *filesystem) createAndOpenLocked(ctx context.Context, rp *vfs.Resolving
 		Start: parent.upperVD,
 		Path:  fspath.Parse(childName),
 	}
-	// We don't know if a whiteout exists on the upper layer; speculatively
-	// unlink it.
-	//
-	// TODO(gvisor.dev/issue/1199): Modify OpenAt => stepLocked so that we do
-	// know whether a whiteout exists.
-	var haveUpperWhiteout bool
-	switch err := vfsObj.UnlinkAt(ctx, fs.creds, &pop); err {
-	case nil:
-		haveUpperWhiteout = true
-	case syserror.ENOENT:
-		haveUpperWhiteout = false
-	default:
-		return nil, err
+	// Unlink the whiteout if it exists.
+	if haveUpperWhiteout {
+		if err := vfsObj.UnlinkAt(ctx, fs.creds, &pop); err != nil {
+			log.Warningf("error while unlinking whiteout: %v", err)
+			return nil, err
+		}
 	}
 	// Create the file on the upper layer, and get an FD representing it.
 	upperFD, err := vfsObj.OpenAt(ctx, fs.creds, &pop, &vfs.OpenOptions{
@@ -967,7 +966,7 @@ func (fs *filesystem) createAndOpenLocked(ctx context.Context, rp *vfs.Resolving
 	}
 	// Re-lookup to get a dentry representing the new file, which is needed for
 	// the returned FD.
-	child, err := fs.getChildLocked(ctx, parent, childName, ds)
+	child, _, err := fs.getChildLocked(ctx, parent, childName, ds)
 	if err != nil {
 		if cleanupErr := vfsObj.UnlinkAt(ctx, fs.creds, &pop); cleanupErr != nil {
 			panic(fmt.Sprintf("unrecoverable overlayfs inconsistency: failed to delete upper layer file after OpenAt(O_CREAT) dentry lookup failure: %v", cleanupErr))
@@ -1047,7 +1046,7 @@ func (fs *filesystem) RenameAt(ctx context.Context, rp *vfs.ResolvingPath, oldPa
 	// directory, we need to check for write permission on it.
 	oldParent.dirMu.Lock()
 	defer oldParent.dirMu.Unlock()
-	renamed, err := fs.getChildLocked(ctx, oldParent, oldName, &ds)
+	renamed, _, err := fs.getChildLocked(ctx, oldParent, oldName, &ds)
 	if err != nil {
 		return err
 	}
@@ -1089,7 +1088,7 @@ func (fs *filesystem) RenameAt(ctx context.Context, rp *vfs.ResolvingPath, oldPa
 		whiteouts    map[string]bool
 	)
 	if replacedLayer.existsInOverlay() {
-		replaced, err = fs.getChildLocked(ctx, newParent, newName, &ds)
+		replaced, _, err = fs.getChildLocked(ctx, newParent, newName, &ds)
 		if err != nil {
 			return err
 		}
@@ -1296,7 +1295,7 @@ func (fs *filesystem) RmdirAt(ctx context.Context, rp *vfs.ResolvingPath) error 
 
 	// Unlike UnlinkAt, we need a dentry representing the child directory being
 	// removed in order to verify that it's empty.
-	child, err := fs.getChildLocked(ctx, parent, name, &ds)
+	child, _, err := fs.getChildLocked(ctx, parent, name, &ds)
 	if err != nil {
 		return err
 	}
@@ -1548,7 +1547,7 @@ func (fs *filesystem) UnlinkAt(ctx context.Context, rp *vfs.ResolvingPath) error
 		if parentMode&linux.S_ISVTX != 0 {
 			// If the parent's sticky bit is set, we need a child dentry to get
 			// its owner.
-			child, err = fs.getChildLocked(ctx, parent, name, &ds)
+			child, _, err = fs.getChildLocked(ctx, parent, name, &ds)
 			if err != nil {
 				return err
 			}
